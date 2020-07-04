@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
+import { createCodeFrame } from 'simple-code-frame';
 
 export function moduleDir(name) {
 	let file = require.resolve(name),
@@ -60,30 +61,26 @@ export function cleanStack(str, cwd = process.cwd()) {
 				read = fs.readFileSync(path.resolve(cwd, filename), 'utf8');
 			} catch (e) {}
 			if (read) {
-				let start = Math.max(0, char - 40);
-				let startLine = Math.max(0, line - 3);
-				read = read.split('\n');
-				clean = clean.replace(/\n +/g, '\n  ');
-				if (line < read.length) {
-					clean +=
-						'\n\n' +
-						chalk.white(
-							highlight(
-								outdent(
-									[
-										read.slice(startLine, line).join('\n'),
-										read[line].substr(start, char + 30),
-										new Array(char).join('-') + '^',
-										read.slice(line + 1, line + 4).join('\n'),
-									].join('\n'),
-									'    ',
-									process.stdout.columns - 10
-								),
-								line - startLine,
-								2
-							)
-						);
-				}
+				let codeFrame = createCodeFrame(read, line, char, {
+					before: 3,
+					after: 3,
+				})
+					.split('\n')
+					.map((line) => {
+						if (/^>\s(.*)/.test(line)) {
+							return line.replace(/^>(.*)/, (_, content) => {
+								return chalk.redBright('>') + chalk.white(content);
+							});
+						} else if (/^\s+\|\s+\^/.test(line)) {
+							return line
+								.replace('|', chalk.dim('|'))
+								.replace('^', chalk.redBright('^'));
+						}
+						return chalk.dim(line);
+					})
+					.join('\n');
+
+				clean += codeFrame;
 			}
 		}
 	}
@@ -96,27 +93,4 @@ function replacer(str, before, root, filename, position) {
 		firstFile = [filename, line - 1, char | 0];
 	}
 	return before + chalk.blue('./' + filename + chalk.dim(position));
-}
-
-function highlight(text, line, count) {
-	let lines = text.split('\n');
-	return (
-		chalk.dim(lines.slice(0, line).join('\n')) +
-		'\n' +
-		lines.slice(line, line + count).join('\n') +
-		'\n' +
-		chalk.dim(lines.slice(line + count).join('\n'))
-	);
-}
-
-function outdent(str, prefix = '', width = 80) {
-	str = str.replace(/(^\n+|\n+$)/g, '').replace(/\t/, '    ');
-	let indents = str.match(/^[ -]+/gm) || [];
-	let minLength = indents.reduce(
-		(indent, value) => Math.min(indent, value.length),
-		indents[0] ? indents[0].length : 0
-	);
-	str = str.replace(/^[ -]+/gm, (str) => prefix + str.substring(minLength));
-	str = str.replace(/^.*$/gm, (str) => str.substring(0, width));
-	return str;
 }
